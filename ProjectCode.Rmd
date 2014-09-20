@@ -1,0 +1,105 @@
+---
+title: "Quantifying Correctness of Barbell Lifts"
+author: "Uma Vijh"
+date: "September 19, 2014"
+output:
+  html_document:
+    fig_caption: yes
+---
+## Synopsis
+In this project, we use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict how well they do the lifts. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data was recorded and more information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+**Summary Results:**
+
+* We fit a random forest model to the training data with a training set error rate of 0.79% and a test set error rate of 0.59%.
+
+* We also successfully predict the manner in which the participants did the exercise in an independent set of 20 cases.
+
+## Data Pre-Processing
+We download the data sets and load them into data frames in R.
+
+```{r, results='hide'}
+library(caret)
+library(randomForest)
+```
+```{r}
+setwd("~/Documents/Coursera/PracticalMachineLearning/Project1")
+fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+if (!file.exists("./training.csv")) {
+        download.file(fileURL,destfile = "./training.csv",method = "curl")
+        dateDownloaded <- date()}
+
+fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if (!file.exists("./testing.csv")) {
+        download.file(fileURL,destfile = "./testing.csv",method = "curl")
+        dateDownloaded <- date()}
+
+barbell <- read.table(file = "training.csv",header=TRUE,sep = ",",stringsAsFactors = FALSE)
+barbelltest <- read.table(file = "testing.csv",header=TRUE,sep = ",",stringsAsFactors = FALSE)
+```
+
+We spilt the barbell training set into test and training for better error estimation as the original test data have only 20 rows.
+
+```{r}
+barbell$classe <- as.factor(barbell$classe)
+inTrain <- createDataPartition(y = barbell$classe,p=0.75,list=FALSE)
+
+training <- barbell[inTrain,]
+testing <- barbell[-inTrain,]
+```
+
+We only keep columns with less than 50% NAs
+
+```{r}
+x <- as.integer(.5*nrow(training))
+newTraining <-training[,colSums(is.na(training)) < x]
+```
+We also remove columns with mostly blank values (this was done by inspection)
+
+```{r}
+newTraining <- newTraining[,-c(1:7,12:20,43:48,52:60,74:82)]
+```
+
+Do the same for the test data
+```{r}
+newTesting <-testing[,colSums(is.na(training)) < x]
+newTesting <- newTesting[,-c(1:7,12:20,43:48,52:60,74:82)]
+```
+
+And the same for the original test data
+
+```{r}
+barbellTest <- barbelltest[,colSums(is.na(training)) < x]
+barbellTest <- barbellTest[,-c(1:7,12:20,43:48,52:60,74:82,93)]
+```
+## Model
+*Apply a random forest machine learning algorithm*
+
+```{r}
+set.seed(33234)
+rf <- randomForest(formula = classe~., data = newTraining, ntree = 50, importance = TRUE, na.action = na.omit,xtest = newTesting[,-53],ytest = newTesting[,53],keep.forest=TRUE)
+```
+
+### Cross-Validation and Error Estimates
+
+Cross-Validation is done in the randomForest call by supplying the test values (these were the 25% of the original testing data that were kept aside. Here's the confusion matrix for the training set:
+```{r}
+rf$confusion
+```
+And the estimate of the Error-rate (based on the training set)
+```{r,echo=FALSE}
+cat("The OOB errror rate for the model is: ",mean(rf$err.rate[50,])*100,"%")
+```
+The confusion matrix for the test set:
+
+```{r}
+rf$test[3]
+```
+And the associated Error-rate for the cross validation test set is 0.59%
+
+## Prediction
+We use the random forest model to predict for the given test cases. These were validated to be correct using the code submission part of the project.
+````{r}
+barbell.pred <- predict(rf,newdata = barbellTest,type = "response")
+barbell.pred
+```
